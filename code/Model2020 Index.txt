@@ -1,0 +1,71 @@
+Names and content for our variables (Model2020)
+
+# IDs
+#  field name     contents
+# geoid        - 5-digit county FIPS parsed from ACS GEOID
+# state        - 2-letter USPS state code
+# county       - County name (title case)
+
+# NOTE: Sample is restricted to Rust Belt counties in IL, IN, MI, OH, WI, PA.
+
+# Registration & CVAP (CPS+CVAP fusion) (Dependent Variable) 
+
+#  field name           source                                 contents
+# reg_rate_all_pct    - CPS Nov 2020 + County CVAP            - Registered rate for all CVAP (%)
+# reg_rate_hisp_pct   - CPS Nov 2020 + County CVAP (Hisp)     - Registered rate for Hispanic CVAP (%)
+# reg_rate_nonhisp_pct- CPS Nov 2020 + County CVAP (Nonhisp)  - Registered rate for Non-Hispanic CVAP (%)
+# cvap_total          - ACS Special Tabulation (CVAP)         - Citizen Voting-Age Population total (count)
+# cvap_hisp           - ACS Special Tabulation (CVAP)         - CVAP Hispanic or Latino (count)
+# cvap_nonhisp        - ACS Special Tabulation (CVAP)         - CVAP Not Hispanic or Latino (count)
+
+# Poverty - S1701 (ACS) (Independent Variable) 
+
+#  original name       new name          contents
+# S1701_C03_006E     - Percent_Poverty - Percent of persons age 18–64 in poverty (%)
+# (Note: S1701_C01_006E Total_Poverty is NOT included in Model2020.)
+
+# Education - S1501 (Population 25 and over) — percentages (Independent Variable) 
+
+#  original name       new name                  contents
+# S1501_C02_007E     - Percent_Less_Than_9th    - < 9th grade (%)
+# S1501_C02_008E     - Percent_9_12_NoDiploma   - 9th–12th, no diploma (%)
+# S1501_C02_009E     - Percent_HS_Diploma       - High school diploma (%)
+# S1501_C02_010E     - Percent_College_NoDegree - Some college, no degree (%)
+# S1501_C02_011E     - Percent_Associates       - Associate’s degree (%)
+# S1501_C02_012E     - Percent_Bachelors        - Bachelor’s degree (%)
+# S1501_C02_013E     - Percent_Graduate         - Graduate/professional degree (%)
+
+# (Note: S1501_C01_007E–013E totals are not included in Model2020.)
+
+# Education buckets - derived from S1501 percents (Independent Variable) 
+
+#  field name           formula (all in percentage points)                   contents
+# edu_hs_plus_pct     - HS + SomeColl + AA + BA + Grad                      - High school or higher (%)
+# edu_somecoll_pct    - SomeColl + AA                                       - Some college / associate (%)
+# edu_ba_plus_pct     - BA + Grad                                           - Bachelor’s degree or higher (%)
+# edu_grad_plus_pct   - Grad                                                - Graduate / professional degree (%)
+# edu_lt_hs_pct       - <9th + 9–12 no diploma                              - Less than high school (%)
+
+# Income - S1901 (Independent Variable) 
+
+#  original name     new name        contents
+# S1901_C01_012E   - Median_Income - Median household income ($)
+
+# Employment - S2301 (Independent Variable) 
+
+#  original name     new name            contents
+# S2301_C04_001E   - Unemployment_Rate - Unemployment rate (16+, %)
+
+# Age, Sex, and Race - DP05 (Independent Variable) 
+
+#  original name     new name        contents
+# DP05_0018E       - age_median    - Median age (years)
+# DP05_0019PE      - pct_under18   - Population under 18 years (%)
+# DP05_0024PE      - pct_65plus    - Population 65 years and over (%)
+
+# DP05_0002PE      - pct_male      - Male (% of total population)
+# DP05_0003PE      - pct_female    - Female (% of total population)
+
+# DP05_0071PE      - pct_hispanic  - Hispanic or Latino (of any race) (% of total population)
+# DP05_0077PE      - pct_white_nh  - White alone, not Hispanic or Latino (% of total population)
+# DP05_0078PE      - pct_black_nh  - Black or African American alone, not Hispanic or Latino (% of total population)

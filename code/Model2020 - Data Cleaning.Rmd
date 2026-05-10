@@ -1,0 +1,397 @@
+---
+title: "Untitled"
+author: "Rivera"
+date: "2025-10-30"
+output: word_document
+---
+
+```{r, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r, include=TRUE}
+# Create paths to create our proxy variable, registered voting-population by county. 
+
+cps20     <- "nov20pub.csv"         # CPS Nov 2020 Voting & Registration microdata
+cvap_path <- "CVAP19-23_County.csv" # County CVAP (Total / Hispanic / Not Hispanic)
+rust      <- c("IL","IN","MI","OH","WI","PA","NY")
+```
+
+```{r, include=TRUE}
+# Build state-level registration rates for Hispanic and Non-Hispanic. 
+
+cps_rates <- function(path, year){
+
+  x <- readr::read_csv(path, show_col_types = FALSE)
+
+# Account for missing variables, ensuring we have Rust Belt States and their counties. 
+  
+  known_state <- c("GESTFIPS","HRSTATE","PRSTATE","PXSTATE","STATEFIP","STATEFIPS")
+  idx <- match(tolower(known_state), tolower(names(x)))
+  idx <- idx[!is.na(idx)]
+  state_col <- if (length(idx) > 0) names(x)[idx[1]] else NA_character_
+
+  if (is.na(state_col)) {
+    num_df <- x |>
+      dplyr::select(where(is.numeric)) |>
+      purrr::imap_dfr(\(.col, nm){
+        ok <- !is.na(.col)
+        tibble(
+          col        = nm,
+          share_fips = if (any(ok)) mean(.col[ok] %in% 1:56) else 0,
+          nunq       = if (any(ok)) dplyr::n_distinct(.col[ok]) else Inf
+        )
+      }) |>
+      dplyr::arrange(dplyr::desc(share_fips), nunq)
+    guess <- num_df |>
+      dplyr::filter(share_fips >= 0.60, nunq <= 56) |>
+      dplyr::slice_head(n = 1) |>
+      dplyr::pull(col)
+    if (length(guess) == 0) stop("Could not detect a CPS state column.")
+    state_col <- guess
+  }
+
+  message(sprintf("Using CPS state column: %s", state_col))
+
+# Choose CPS survey weight 
+  
+  wt <- c("PWSSWGT","PWCMPWGT") |>
+    purrr::keep(~ .x %in% names(x)) |>
+    dplyr::first()
+  if (is.null(wt)) stop("No CPS weight column (PWSSWGT/PWCMPWGT) found.")
+
+# Retrieve FIPS codes for Rust Belt 
+  
+  fips_to_st <- c("17"="IL","18"="IN","26"="MI","39"="OH","55"="WI","42"="PA","36"="NY")
+
+# Create registration rates by state and Hispanic status. 
+  
+  x |>
+    dplyr::mutate(
+      state_fips = as.character(.data[[state_col]]),
+      state      = dplyr::recode(state_fips, !!!fips_to_st, .default = NA_character_),
+      registered = dplyr::case_when(PES1 == 1 ~ 1,
+                                    PES1 == 2 ~ 0,
+                                    TRUE ~ NA_real_),
+      hisp       = dplyr::case_when(PEHSPNON == 2 ~ 1,
+                                    PEHSPNON == 1 ~ 0,
+                                    TRUE ~ NA_real_),
+      ok = (PRTAGE >= 18) & PRCITSHP %in% c(1,2) &
+           !is.na(state) & !is.na(registered) & !is.na(hisp)
+    ) |>
+    dplyr::filter(ok, state %in% rust) |>
+    dplyr::group_by(state, hisp) |>
+    dplyr::summarise(
+      p = sum(registered * .data[[wt]], na.rm = TRUE) /
+          sum(.data[[wt]], na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(hisp = dplyr::if_else(hisp == 1, "p_hisp", "p_nonhisp")) |>
+    tidyr::pivot_wider(names_from = hisp, values_from = p) |>
+    dplyr::mutate(year = year)
+}
+```
+
+```{r, include=TRUE}
+# CVAP county prep (Total / Hispanic / Non-Hispanic)
+
+cvap <- readr::read_csv(
+  cvap_path,
+  locale = readr::locale(encoding = "latin1"),
+  show_col_types = FALSE
+) |>
+  dplyr::filter(lntitle %in% c("Total","Hispanic or Latino","Not Hispanic or Latino")) |>
+  dplyr::mutate(
+    county     = stringr::str_trim(stringr::str_remove(geoname, ",\\s*[^,]+$")),
+    state_name = stringr::str_trim(stringr::str_replace(stringr::str_extract(geoname, ",\\s*[^,]+$"), "^,\\s*", "")),
+    state      = dplyr::recode(state_name,
+                               "Illinois"="IL","Indiana"="IN","Michigan"="MI","Ohio"="OH",
+                               "Wisconsin"="WI","Pennsylvania"="PA","New York"="NY",
+                               .default = NA_character_)
+  ) |>
+  dplyr::filter(state %in% rust) |>
+  dplyr::select(state, county, geoid, lntitle, cvap_est) |>
+  dplyr::mutate(cvap_est = as.numeric(cvap_est)) |>
+  tidyr::pivot_wider(names_from = lntitle, values_from = cvap_est) |>
+  dplyr::rename(
+    cvap_total   = `Total`,
+    cvap_hisp    = `Hispanic or Latino`,
+    cvap_nonhisp = `Not Hispanic or Latino`
+  )
+```
+
+```{r, include=TRUE}
+# Build 2020 rates
+
+rates <- cps_rates(cps20, 2020)
+
+# Drop New York (changed interests in sample, we will stick to six states and their counties).
+
+county_regs_2020 <- cvap |>
+  dplyr::left_join(dplyr::filter(rates, year == 2020), by = "state") |>
+  dplyr::mutate(
+    registered_est = cvap_hisp * p_hisp + cvap_nonhisp * p_nonhisp,
+    registered_pct = registered_est / cvap_total
+  ) |>
+  dplyr::select(
+    state, county, geoid,
+    cvap_total, cvap_hisp, cvap_nonhisp,
+    p_hisp, p_nonhisp,
+    registered_est, registered_pct
+  ) |>
+  dplyr::filter(state != "NY") |>      # ⬅️ drop New York here
+  dplyr::arrange(state, county)
+
+readr::write_csv(county_regs_2020, "rustbelt_county_registered_2020.csv")
+print(head(county_regs_2020, 10))
+
+# Double check: state-level aggregation should match CPS-weighted totals approximately
+
+qa_state <- county_regs_2020 |>
+  dplyr::group_by(state) |>
+  dplyr::summarise(
+    county_backcast_rate = sum(registered_est, na.rm = TRUE) / sum(cvap_total, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+# Adding and sorting county FIPS codes
+
+county_regs_2020 <- county_regs_2020 |>
+  mutate(
+    geoid5      = stringr::str_extract(geoid, "\\d{5}$"),  # 5-digit county FIPS (keep as character!)
+    state_fips  = stringr::str_sub(geoid5, 1, 2),
+    county_fips = stringr::str_sub(geoid5, 3, 5)
+  ) |>
+  relocate(geoid5, state_fips, county_fips, .after = geoid)
+```
+
+```{r}
+# Adding and sorting our dependent variables. 
+
+model_2020_wide <- county_regs_2020 |>
+  dplyr::transmute(
+    GEO_ID = geoid5,
+    State  = state,
+    County = county,
+    `Registered Rate – All CVAP (%)`        = registered_pct,
+    `CVAP – Total (count)`                  = cvap_total,
+    `CVAP – Hispanic (count)`               = cvap_hisp,
+    `CVAP – Non-Hispanic (count)`           = cvap_nonhisp,
+    `Registered Rate – Hispanic CVAP (%)`   = p_hisp,
+    `Registered Rate – Non-Hispanic CVAP (%)` = p_nonhisp
+  )
+```
+
+```{r}
+# Add our independent variables to the Model 2020 dataset. 
+
+ext_raw <- readr::read_csv("data_cleaned.csv", show_col_types = FALSE)
+
+# County codes from common possibilities
+
+pick_col <- function(df, pats){
+  nm <- names(df)
+  hits <- nm[Reduce(`|`, lapply(pats, \(p) grepl(p, nm, ignore.case = TRUE)))]
+  if (length(hits)) hits[1] else NA_character_
+}
+geo_col  <- pick_col(ext_raw, c("^GEO[_ ]?ID$","^GEOID$","geoid","fips$"))
+name_col <- pick_col(ext_raw, c("^NAME$","Geographic Area Name"))
+
+ext <- ext_raw |>
+  mutate(
+    geoid5 = case_when(
+      !is.na(geo_col)  ~ stringr::str_extract(.data[[geo_col]], "\\d{5}$"),
+      !is.na(name_col) ~ stringr::str_extract(.data[[name_col]], "\\b\\d{5}\\b"),
+      TRUE             ~ NA_character_
+    )
+  )
+
+stopifnot("geoid5" %in% names(ext))
+
+# Capture names 
+
+nm <- names(ext)
+
+# Standardize columns 
+
+ext <- ext |>
+  mutate(
+    # Poverty S1701
+    Percent_Poverty          = coalesce(!!!rlang::syms(intersect(c("Percent_Poverty","S1701_C03_006E"), nm))),
+    Total_Poverty            = coalesce(!!!rlang::syms(intersect(c("Total_Poverty","S1701_C01_006E"), nm))),
+    # Education S1501 (percents)
+    Percent_Less_Than_9th    = coalesce(!!!rlang::syms(intersect(c("Percent_Less_Than_9th","S1501_C02_007E"), nm))),
+    Percent_9_12_NoDiploma   = coalesce(!!!rlang::syms(intersect(c("Percent_9_12_NoDiploma","S1501_C02_008E"), nm))),
+    Percent_HS_Diploma       = coalesce(!!!rlang::syms(intersect(c("Percent_HS_Diploma","S1501_C02_009E"), nm))),
+    Percent_College_NoDegree = coalesce(!!!rlang::syms(intersect(c("Percent_College_NoDegree","S1501_C02_010E"), nm))),
+    Percent_Associates       = coalesce(!!!rlang::syms(intersect(c("Percent_Associates","S1501_C02_011E"), nm))),
+    Percent_Bachelors        = coalesce(!!!rlang::syms(intersect(c("Percent_Bachelors","S1501_C02_012E"), nm))),
+    Percent_Graduate         = coalesce(!!!rlang::syms(intersect(c("Percent_Graduate","S1501_C02_013E"), nm))),
+    # Income S1901
+    Median_Income            = coalesce(!!!rlang::syms(intersect(c("Median_Income","S1901_C01_012E"), nm))),
+    # Employment S2301
+    Unemployment_Rate        = coalesce(!!!rlang::syms(intersect(c("Unemployment_Rate","S2301_C04_001E"), nm)))
+  ) |>
+  # Make sure numeric columns are truly numeric (in case the CSV stored strings)
+  mutate(across(-geoid5, ~ suppressWarnings(as.numeric(.x)))) |>
+  # 3) Keep just the join key + standardized columns
+  select(
+    geoid5,
+    Percent_Poverty, Total_Poverty, Median_Income, Unemployment_Rate,
+    Percent_Less_Than_9th, Percent_9_12_NoDiploma, Percent_HS_Diploma,
+    Percent_College_NoDegree, Percent_Associates, Percent_Bachelors, Percent_Graduate
+  )
+
+# Add additional independent variables: age, gender, and race.
+
+age_gender_race_raw <- readr::read_csv(
+  "Age Gender Race.csv",
+  show_col_types = FALSE
+)
+
+# Find the GEOID column 
+
+geo_col_agr <- pick_col(age_gender_race_raw,
+                        c("^GEO[_ ]?ID$","^GEOID$","geoid","fips$"))
+
+age_gender_race <- age_gender_race_raw |>
+  dplyr::filter(stringr::str_starts(.data[[geo_col_agr]], "0500000US")) |>
+  dplyr::mutate(
+    geoid5 = stringr::str_extract(.data[[geo_col_agr]], "\\d{5}$"),
+
+# Age 
+
+    median_age_years = as.numeric(DP05_0018E),    
+    pct_under18      = as.numeric(DP05_0019PE),   
+    pct_65plus       = as.numeric(DP05_0024PE),   
+
+# Sex
+
+    pct_male         = as.numeric(DP05_0002PE),   
+    pct_female       = as.numeric(DP05_0003PE),   
+
+# Race / Ethnicity 
+
+    pct_hispanic     = as.numeric(DP05_0071PE),   
+    pct_white_nh     = as.numeric(DP05_0077PE),   
+    pct_black_nh     = as.numeric(DP05_0078PE)    
+  ) |>
+  dplyr::select(
+    geoid5,
+    median_age_years,
+    pct_under18,
+    pct_65plus,
+    pct_male,
+    pct_female,
+    pct_hispanic,
+    pct_white_nh,
+    pct_black_nh
+  )
+
+# Quick check 
+
+nrow(age_gender_race)   
+
+# Merge to main dataset by FIPS
+
+merged2 <- county_regs_2020 |>
+  dplyr::left_join(ext,              by = "geoid5") |>
+  dplyr::left_join(age_gender_race,  by = "geoid5")
+
+
+# Check if registration rates are percent units 
+
+merged2 <- merged2 |>
+  mutate(
+    `Registered Rate – All CVAP (%)`          = registered_pct * 100,
+    `Registered Rate – Hispanic CVAP (%)`     = p_hisp * 100,
+    `Registered Rate – Non-Hispanic CVAP (%)` = p_nonhisp * 100
+  )
+
+# Derive the education buckets from our independent variables
+
+merged2 <- merged2 |>
+  mutate(
+    edu_hs_plus   = Percent_HS_Diploma + Percent_College_NoDegree + Percent_Associates +
+                    Percent_Bachelors + Percent_Graduate,
+    edu_somecoll  = Percent_College_NoDegree + Percent_Associates,
+    edu_ba_plus   = Percent_Bachelors + Percent_Graduate,
+    edu_grad_plus = Percent_Graduate,
+    edu_lt_hs     = Percent_Less_Than_9th + Percent_9_12_NoDiploma
+  )
+
+# Rebuild dataset with remaining independent variables 
+
+model_2020_wide <- merged2 |>
+  transmute(
+    geoid   = geoid5,
+    state   = state,
+    county  = county,
+
+# Dependent Variables 
+
+    reg_rate_all_pct          = registered_pct * 100,
+    cvap_total                = cvap_total,
+    cvap_hisp                 = cvap_hisp,
+    cvap_nonhisp              = cvap_nonhisp,
+    reg_rate_hisp_pct         = p_hisp * 100,
+    reg_rate_nonhisp_pct      = p_nonhisp * 100,
+
+# Education buckets (Independent)
+
+    edu_hs_plus_pct =
+      Percent_HS_Diploma + Percent_College_NoDegree +
+      Percent_Associates + Percent_Bachelors + Percent_Graduate,
+
+    edu_somecoll_pct =
+      Percent_College_NoDegree + Percent_Associates,
+
+    edu_ba_plus_pct =
+      Percent_Bachelors + Percent_Graduate,
+
+    edu_grad_plus_pct =
+      Percent_Graduate,
+
+    edu_lt_hs_pct =
+      Percent_Less_Than_9th + Percent_9_12_NoDiploma,
+
+# Detailed education splits (Independent)
+
+    Percent_Less_Than_9th,
+    Percent_9_12_NoDiploma,
+    Percent_HS_Diploma,
+    Percent_College_NoDegree,
+    Percent_Associates,
+    Percent_Bachelors,
+    Percent_Graduate,
+
+# Poverty, Unemployment, and Income (Independent)
+
+    Percent_Poverty,
+    Unemployment_Rate,
+    Median_Income,
+
+# Age, Sex, and Race Variables (Independent)
+
+    age_median   = median_age_years,
+    pct_under18  = pct_under18,
+    pct_65plus   = pct_65plus,
+    pct_male     = pct_male,
+    pct_female   = pct_female,
+    pct_hispanic = pct_hispanic,
+    pct_white_nh = pct_white_nh,
+    pct_black_nh = pct_black_nh
+  )
+```
+
+```{r}
+# Create model 
+
+readr::write_csv(model_2020_wide, "Model2020.csv")
+message("Wrote Model2020.csv (", nrow(model_2020_wide), " rows × ", ncol(model_2020_wide), " cols).")
+```
+
+

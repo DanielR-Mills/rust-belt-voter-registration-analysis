@@ -1,0 +1,234 @@
+---
+title: "Final_Project_Code"
+author: "Logan Rivera"
+date: "2025-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+```{r}
+data = read_csv("Data/Model2020.csv")
+```
+
+```{r}
+summary(data$age_median)
+```
+
+
+
+# Backwards elimination 
+# Original model - Every independent variable 
+```{r}
+model1_every_independent = lm(reg_rate_all_pct ~
+              Percent_Less_Than_9th +
+              Percent_9_12_NoDiploma +
+              Percent_HS_Diploma +
+              Percent_College_NoDegree +
+              Percent_Associates +
+              Percent_Bachelors + 
+              Percent_Graduate +
+              Unemployment_Rate +
+              Percent_Poverty +
+              Median_Income +
+              age_median +
+              pct_under18 +
+              pct_65plus +
+              pct_male +
+              pct_female +
+              pct_hispanic 
+              , data)
+summary(model1_every_independent)
+```
+
+
+# Model that has solid p values and R squared, but bad colinearity
+```{r}
+model2_working_model = lm(reg_rate_all_pct ~
+              Percent_Less_Than_9th +
+  
+              Percent_HS_Diploma +
+              Percent_College_NoDegree +
+              Percent_Associates +
+              Percent_Bachelors + 
+              Percent_Graduate +
+              Unemployment_Rate +
+              Percent_Poverty +
+              
+              pct_65plus +
+              pct_male +
+              pct_female +
+              pct_hispanic 
+      
+              , data)
+summary(model2_working_model)
+```
+
+```{r}
+library(car)
+```
+
+
+
+# checking colinearity of model 2
+```{r}
+vif(model2_working_model)
+```
+
+
+# fixed multicolinearity problems (final model)
+```{r}
+model3_multicolinearity = lm(reg_rate_all_pct ~
+              Percent_Less_Than_9th +
+              Percent_9_12_NoDiploma +
+              Percent_College_NoDegree +
+              Percent_Associates +
+              Percent_Bachelors + 
+              Percent_Graduate +
+              Unemployment_Rate +
+              Percent_Poverty +
+              pct_65plus +
+              pct_male +
+              pct_hispanic 
+              , data)
+summary(model3_multicolinearity)
+```
+
+# final colinearity values
+```{r}
+vif(model3_multicolinearity)
+```
+
+
+# checking model conditions 
+
+#linearity (independent against residuals)
+# independent #1 - Percent less than 9th 
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_Less_Than_9th, y=.resid))
+```
+
+
+# 2 - Percent_9_12_NoDiploma
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_9_12_NoDiploma, y=.resid))
+```
+
+# 3 - Percent_College_NoDegree
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_College_NoDegree, y=.resid))
+```
+
+# 4 - Percent_Associates        
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_Associates, y=.resid))
+```
+
+# 5 - Percent_Bachelors
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_Bachelors, y=.resid))
+```
+
+# 6 - Percent_Graduate
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_Bachelors, y=.resid))
+```
+
+# 7 - Unemployment_Rate
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Unemployment_Rate, y=.resid))
+```
+
+# 8 - Percent_Poverty
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=Percent_Poverty, y=.resid))
+```
+
+# 9 - pct_65plus
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=pct_65plus, y=.resid))
+```
+
+# 10 - pct_male
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=pct_male, y=.resid))
+```
+
+
+# 11 - pct_hispanic
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=pct_hispanic, y=.resid))
+```
+
+
+# Independence (Order of data collection)
+
+# ???
+
+
+# Nearly Normal Residuals (distribution of residuals)
+```{r}
+ggplot(model3_multicolinearity)+
+  geom_density(aes(x=.resid))
+```
+
+
+# Equal variability (Values of residuals against fitted values)
+
+```{r}
+ggplot(model3_multicolinearity) + 
+  geom_point(aes(x=.fitted, y=.resid))
+
+```
+
+```{r}
+library(skimr)
+library(DescTools)
+
+```
+
+
+```{r}
+variables <- c("Percent_Less_Than_9th", "Percent_9_12_NoDiploma", "Percent_College_NoDegree", "Percent_Associates", "Percent_Bachelors", "Percent_Graduate", "Unemployment_Rate", "Percent_Poverty", "pct_65plus", "pct_male", "pct_hispanic")
+
+results <- list()
+
+for (col in variables) {
+  
+  results[[col]] <- data %>%
+    summarise(
+      mean = mean(.data[[col]], na.rm = TRUE),
+      median = median(.data[[col]], na.rm = TRUE),
+      mode = Mode(.data[[col]]),
+      range = max(.data[[col]], na.rm = TRUE) - min(.data[[col]], na.rm = TRUE),
+      variance = var(.data[[col]], na.rm = TRUE),
+      standard_dev = sd(.data[[col]], na.rm = TRUE)
+    ) %>%
+    pivot_longer(
+      cols = everything(),
+      names_to = "statistic",
+      values_to = "value"
+    ) %>%
+    mutate(variable = col)
+}
+
+final_output <- bind_rows(results)
+final_output
+```
+

@@ -1,0 +1,113 @@
+---
+title: "Mapping Test"
+author: "Rivera"
+date: "2025-12-04"
+output: word_document
+---
+
+```{r}
+# -------------------- Packages --------------------
+library(dplyr)
+library(readr)
+library(tigris)
+library(sf)
+library(ggplot2)
+
+options(tigris_use_cache = TRUE)
+
+# -------------------- 1. Read data ----------------
+model2020 <- read_csv("Model2020.csv") |>
+  mutate(
+    geoid = sprintf("%05d", as.integer(geoid))  # ensure 5-digit FIPS code
+  )
+
+# Optional: check names if needed
+# names(model2020)
+
+# -------------------- 2. Run YOUR regression model ----------------
+# Dependent variable: reg_rate_all_pct
+# Predictors taken from your screenshot:
+
+mod <- lm(
+  reg_rate_all_pct ~
+    Percent_Less_Than_9th +
+    Percent_9_12_NoDiploma +
+    Percent_College_NoDegree +
+    Percent_Associates +
+    Percent_Bachelors +
+    Percent_Graduate +
+    Unemployment_Rate +
+    Percent_Poverty +
+    pct_65plus +
+    pct_male +
+    pct_hispanic,
+  data = model2020
+)
+
+summary(mod)  # optional
+
+# -------------------- 3. Standardized residuals & flags -----------
+model2020 <- model2020 |>
+  mutate(
+    std_resid = rstandard(mod),
+    sig_type = dplyr::case_when(
+      std_resid >  2  ~ "Higher reg than model expects",
+      std_resid < -2  ~ "Lower reg than model expects",
+      TRUE            ~ "Close to model"
+    ),
+    sig_type = factor(
+      sig_type,
+      levels = c(
+        "Higher reg than model expects",
+        "Lower reg than model expects",
+        "Close to model"
+      )
+    )
+  )
+
+# -------------------- 4. Get Rust Belt county shapes ---------------
+rust_states <- c("IL", "IN", "MI", "OH", "PA", "WI")
+
+counties_rb <- counties(
+  state = rust_states,
+  year  = 2020,
+  cb    = TRUE,
+  class = "sf"
+) |>
+  mutate(geoid = GEOID)
+
+# -------------------- 5. Join data to map -------------------------
+map_data <- counties_rb |>
+  left_join(model2020, by = "geoid")
+
+# -------------------- 6. Map: residual-based significance ---------
+ggplot(map_data) +
+  geom_sf(aes(fill = sig_type), color = NA) +
+  scale_fill_manual(
+    values = c(
+      "Higher reg than model expects" = "red",
+      "Lower reg than model expects"  = "blue",
+      "Close to model"                = "grey80"
+    ),
+    name = "|Standardized residual| > 2"
+  ) +
+  theme_void() +
+  labs(
+    title    = "Counties Classified by Regression Residuals",
+    subtitle = "Rust Belt counties, 2020\nRed/blue counties deviate strongly from the model"
+  )
+```
+
+--------
+
+Conceptually:
+
+- We run your exact model.  
+- `std_resid` are standardized residuals.  
+- `|std_resid| > 2` ≈ “statistically unusual” at about the 5% level.  
+
+- **Red** = actual registration is higher than predicted.  
+
+- **Blue** = actual registration is lower than predicted.  
+
+- **Grey** = close to what the model expects.

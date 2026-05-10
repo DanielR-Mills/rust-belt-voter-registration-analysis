@@ -1,0 +1,199 @@
+---
+title: "Final Project Technical Report"
+author: "Logan Rivera & Daniel Rivera-Mills"
+date: "2025-12-14"
+output:
+  word_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidycensus)
+library(tidyverse)
+library(modelsummary)
+library(flextable)
+library(broom) 
+library(ggplot2)
+library(forcats)
+library(dplyr)
+library(knitr)       
+library(sf)
+library(tigris)
+library(ggplot2)
+```
+
+# Abstract 
+
+This project investigates the extent to which county-level socioeconomic characteristics predict estimated voter-registration rates across counties in the U.S. Rust Belt in 2020. Using datasets from the U.S. Census Bureau, we construct three regression models to relate registration rates to factors capturing educational composition, economic conditions, and demographic characteristics. We find that measures of education and unemployment exhibit the strongest and most consistent associations with registration, as both higher educational attainment and higher unemployment rates are associated with higher registration rates. Overall, our results show that socioeconomic composition meaningfully explains variation in voter-registration rates, while leaving room for additional political and institutional factors that are not captured in our models.     
+
+# Introduction 
+
+### You should give an overview of the specifics of your model, but not the full details. 
+
+The COVID-19 pandemic represents an unprecidented period within the United States and the broader global economy. Issues ranging from supply chain shocks, economic shutdowns, and vaccination distribution further ignited an already polarized nation heading into another presidential election. This changed the way people were able to participate in civic engagement, making this election consequential beyond the need to survive the pandemic. Compared to previous elections, the concern of voter registration and representation became a significantly larger topic, as campaigns across social media further emphasized the call for high civic engagement. 
+
+Particularily, U.S. Rust Belt represents a core sample of highly-sought voters across all presidential candidates. This region of the United States represents an economically diverse and politically competetive ranging, stemming from its significant mix of deindustrialized counties containing different conditions of economic recovery. Our reserach seeks to study the extent in which county-level socioeconomic characteristiscs predict estimated voter-registration rates across counties within the U.S. Rust Belt. This study not only captures relationships regarding political representation and inequality, but also identifies socioeconomic factors that either encourage or prevent civic engagement 
+
+Our contribution... 
+
+
+
+# Data
+
+a brief description of your data set. What variables are included? Where did they come from? What are units of measurement? What is the population that was sampled? How was the sample collected? You should also include some basic univariate analysis.
+
+
+This study defines the U.S. Rust Belt by the following states: Indiana, Illinois, Michigan, Ohio, Pennsylvania, and Wisconsin. In total, our dataset contains 504 counties, providing an adequate sample of the U.S. Rust Belt that further reflects common characteristics among the citizen voting age population of the United States. The data for our project is collected solely from the U.S. Census Bureau. 
+
+The response variable for this study required the construction of a proxy variable that measures county-level voter registration rates. This is constructed using the CVAP 2019-2023 and Voting and Registration datasets. This variable measures county-level estimated voter registration rates among the citizen voting-age population in 2020. 
+
+This study incorporates several explanatory variables, gathered from the following datasets: Educational attainment (S1501), Poverty (S1701), Income (S1901), Employment status (S2301), and Demographic and housing estimates (DP05). From these datasets, we use a number of variables...
+
+# Hypotheses 
+
+Ho:
+
+Ha: 
+
+
+
+# Analysis 
+
+Run at least one multi-variate regression model with at least five independent variables and display the results. Do not forget to check model conditions using graphs, as we learned in Chapter 9 of OpenIntro Statistics.
+
+
+```{r}
+### Creating our three models in R so that we can run conditions and tables later in the document. 
+
+# Access the file containing Census Bureau datasets we cleaned earlier in the semester. 
+
+Model2020 <- read.csv("Model2020.csv")
+
+# Model 0 -> All of our 23 independent variables from the cleaned dataset, Model2020. 
+
+Model0 <- lm(reg_rate_all_pct ~
+                  edu_hs_plus_pct +
+                  edu_somecoll_pct +
+                  edu_ba_plus_pct +
+                  edu_grad_plus_pct +
+                  edu_lt_hs_pct +
+                  Percent_Less_Than_9th +
+                  Percent_9_12_NoDiploma +
+                  Percent_HS_Diploma +
+                  Percent_College_NoDegree +
+                  Percent_Associates +
+                  Percent_Bachelors +
+                  Percent_Graduate +
+                  Percent_Poverty +
+                  Unemployment_Rate +
+                  Median_Income +
+                  age_median +
+                  pct_under18 +
+                  pct_65plus +
+                  pct_male +
+                  pct_female +
+                  pct_hispanic +
+                  pct_white_nh +
+                  pct_black_nh,
+                  data = Model2020)  
+```
+
+```{r}
+# Model 1 -> 9 independent variables, best fit. 
+
+Model1 <- lm(reg_rate_all_pct ~
+    edu_lt_hs_pct +      
+    edu_ba_plus_pct +     
+    Unemployment_Rate +
+    pct_under18 +
+    pct_65plus +
+    pct_hispanic,
+    data = Model2020)
+```
+
+```{r}
+# Model 2 -> The log of 9 independent variables, best fit. 
+
+Model2 <- lm(log(reg_rate_all_pct) ~
+                    Percent_College_NoDegree +
+                    Percent_HS_Diploma +
+                    pct_65plus +
+                    Unemployment_Rate +
+                    pct_male +
+                    Percent_9_12_NoDiploma +
+                    edu_ba_plus_pct +
+                    pct_hispanic +
+                    Percent_Poverty,
+                    data = Model2020)
+```
+
+# Results 
+
+an explanation of what your model tells us about the research question. You should interpret coefficients in context and explain their relevance. What does your model tell us that we didn’t already know before? You may want to include negative results, but be careful about how you interpret them. For example, you may want to say something along the lines of: “we found no evidence that explanatory variable x is associated with response variable y," or “explanatory variable x did not provide any additional explanatory power above what was already conveyed by explanatory variable z." On other hand, you probably shouldn’t claim: “there is no relationship between x and y."
+
+# Conclusion 
+
+a summary of your findings and a discussion of their limitations. First, remind the reader of the question that you originally set out to answer, and summarize your findings. Second, discuss the limitations of your model, and what could be done to improve it. You might also want to do the same for your data. This is your last opportunity to clarify the scope of your findings before a journalist misinterprets them and makes wild extrapolations! Protect yourself by being clear about what is not implied by your research. Remember: be both skeptical and constructive.
+
+```{r}
+### This is the summary table from our slide show that shows the comparison of the three regression models we ran. 
+
+# Select the models we need on the comparison table. 
+
+models <- list(
+  "Model 0: Full"      = Model0,
+  "Model 1: Best Fit"  = Model1,
+  "Model 2: Log Model" = Model2
+)
+
+# Create the structure of measurements we want to display for comparison.  
+
+gof_map <- data.frame(
+  raw   = c("nobs",      "r.squared", "adj.r.squared", "statistic", "p.value"),
+  clean = c("N",         "R2",        "Adj R2",        "F-statistic", "Model p"),
+  fmt   = c(0,           3,           3,               2,            3),
+  omit  = c(FALSE,       FALSE,       FALSE,           FALSE,        FALSE)
+)
+
+# Create and adjust labels to improve comprehension. 
+
+reg_tab <- msummary(
+  models,
+  estimate  = "{estimate}{stars}",
+  statistic = "SE = {std.error}\n p = {p.value}",
+  stars     = c("*" = 0.05, "**" = 0.01, "***" = 0.001),
+  coef_map  = c(
+    "Percent_College_NoDegree" = "College, No Degree (%)",
+    "Percent_HS_Diploma"       = "HS Diploma (%)",
+    "pct_65plus"               = "Age 65+ (%)",
+    "Unemployment_Rate"        = "Unemployment Rate (%)",
+    "pct_male"                 = "Male (%)",
+    "Percent_9_12_NoDiploma"   = "9–12, No Diploma (%)",
+    "edu_ba_plus_pct"          = "BA or Higher (%)",
+    "pct_hispanic"             = "Hispanic (%)",
+    "Percent_Poverty"          = "Poverty (%)",
+    "(Intercept)"              = "Constant"
+  ),
+  gof_omit = NULL,
+  gof_map  = gof_map,
+  output   = "flextable"
+)
+
+# Adjust formatting for slides/technical report. 
+
+reg_tab <- reg_tab |>
+  autofit() |>
+  theme_booktabs() |>
+  bold(part = "header") |>
+  align(part = "all", align = "center") |>
+  fontsize(part = "all", size = 9) |>
+  padding(part = "all", padding = 2)
+
+reg_tab
+```
+
+
+
+
